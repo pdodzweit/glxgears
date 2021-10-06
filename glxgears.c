@@ -42,6 +42,8 @@
 typedef int (*PFNGLXGETSWAPINTERVALMESAPROC)(void);
 #endif
 
+typedef GLXContext (*glXCreateContextAttribsARBProc)
+    (Display*, GLXFBConfig, GLXContext, Bool, const int*);
 
 #define BENCHMARK
 
@@ -76,7 +78,7 @@ current_time(void)
    static double t = 0.0;
    static int warn = 1;
    if (warn) {
-      fprintf(stderr, "Warning: current_time() not implemented!!\n");
+      printf( "Warning: current_time() not implemented!!\n");
       warn = 0;
    }
    return t += 1.0;
@@ -109,251 +111,228 @@ static GLfloat fix_point = 40.0;	/* Fixation point distance.  */
 static GLfloat left, right, asp;	/* Stereo frustum params.  */
 
 
-/*
- *
- *  Draw a gear wheel.  You'll probably want to call this function when
- *  building a display list since we do a lot of trig here.
- * 
- *  Input:  inner_radius - radius of hole at center
- *          outer_radius - radius at center of teeth
- *          width - width of gear
- *          teeth - number of teeth
- *          tooth_depth - depth of tooth
- */
-static void
-gear(GLfloat inner_radius, GLfloat outer_radius, GLfloat width,
-     GLint teeth, GLfloat tooth_depth)
-{
-   GLint i;
-   GLfloat r0, r1, r2;
-   GLfloat angle, da;
-   GLfloat u, v, len;
+#define GL_DEBUG(m) \
+  m;                \
+  check_gl_error(#m);
 
-   r0 = inner_radius;
-   r1 = outer_radius - tooth_depth / 2.0;
-   r2 = outer_radius + tooth_depth / 2.0;
-
-   da = 2.0 * M_PI / teeth / 4.0;
-
-   glShadeModel(GL_FLAT);
-
-   glNormal3f(0.0, 0.0, 1.0);
-
-   /* draw front face */
-   glBegin(GL_QUAD_STRIP);
-   for (i = 0; i <= teeth; i++) {
-      angle = i * 2.0 * M_PI / teeth;
-      glVertex3f(r0 * cos(angle), r0 * sin(angle), width * 0.5);
-      glVertex3f(r1 * cos(angle), r1 * sin(angle), width * 0.5);
-      if (i < teeth) {
-	 glVertex3f(r0 * cos(angle), r0 * sin(angle), width * 0.5);
-	 glVertex3f(r1 * cos(angle + 3 * da), r1 * sin(angle + 3 * da),
-		    width * 0.5);
-      }
-   }
-   glEnd();
-
-   /* draw front sides of teeth */
-   glBegin(GL_QUADS);
-   da = 2.0 * M_PI / teeth / 4.0;
-   for (i = 0; i < teeth; i++) {
-      angle = i * 2.0 * M_PI / teeth;
-
-      glVertex3f(r1 * cos(angle), r1 * sin(angle), width * 0.5);
-      glVertex3f(r2 * cos(angle + da), r2 * sin(angle + da), width * 0.5);
-      glVertex3f(r2 * cos(angle + 2 * da), r2 * sin(angle + 2 * da),
-		 width * 0.5);
-      glVertex3f(r1 * cos(angle + 3 * da), r1 * sin(angle + 3 * da),
-		 width * 0.5);
-   }
-   glEnd();
-
-   glNormal3f(0.0, 0.0, -1.0);
-
-   /* draw back face */
-   glBegin(GL_QUAD_STRIP);
-   for (i = 0; i <= teeth; i++) {
-      angle = i * 2.0 * M_PI / teeth;
-      glVertex3f(r1 * cos(angle), r1 * sin(angle), -width * 0.5);
-      glVertex3f(r0 * cos(angle), r0 * sin(angle), -width * 0.5);
-      if (i < teeth) {
-	 glVertex3f(r1 * cos(angle + 3 * da), r1 * sin(angle + 3 * da),
-		    -width * 0.5);
-	 glVertex3f(r0 * cos(angle), r0 * sin(angle), -width * 0.5);
-      }
-   }
-   glEnd();
-
-   /* draw back sides of teeth */
-   glBegin(GL_QUADS);
-   da = 2.0 * M_PI / teeth / 4.0;
-   for (i = 0; i < teeth; i++) {
-      angle = i * 2.0 * M_PI / teeth;
-
-      glVertex3f(r1 * cos(angle + 3 * da), r1 * sin(angle + 3 * da),
-		 -width * 0.5);
-      glVertex3f(r2 * cos(angle + 2 * da), r2 * sin(angle + 2 * da),
-		 -width * 0.5);
-      glVertex3f(r2 * cos(angle + da), r2 * sin(angle + da), -width * 0.5);
-      glVertex3f(r1 * cos(angle), r1 * sin(angle), -width * 0.5);
-   }
-   glEnd();
-
-   /* draw outward faces of teeth */
-   glBegin(GL_QUAD_STRIP);
-   for (i = 0; i < teeth; i++) {
-      angle = i * 2.0 * M_PI / teeth;
-
-      glVertex3f(r1 * cos(angle), r1 * sin(angle), width * 0.5);
-      glVertex3f(r1 * cos(angle), r1 * sin(angle), -width * 0.5);
-      u = r2 * cos(angle + da) - r1 * cos(angle);
-      v = r2 * sin(angle + da) - r1 * sin(angle);
-      len = sqrt(u * u + v * v);
-      u /= len;
-      v /= len;
-      glNormal3f(v, -u, 0.0);
-      glVertex3f(r2 * cos(angle + da), r2 * sin(angle + da), width * 0.5);
-      glVertex3f(r2 * cos(angle + da), r2 * sin(angle + da), -width * 0.5);
-      glNormal3f(cos(angle), sin(angle), 0.0);
-      glVertex3f(r2 * cos(angle + 2 * da), r2 * sin(angle + 2 * da),
-		 width * 0.5);
-      glVertex3f(r2 * cos(angle + 2 * da), r2 * sin(angle + 2 * da),
-		 -width * 0.5);
-      u = r1 * cos(angle + 3 * da) - r2 * cos(angle + 2 * da);
-      v = r1 * sin(angle + 3 * da) - r2 * sin(angle + 2 * da);
-      glNormal3f(v, -u, 0.0);
-      glVertex3f(r1 * cos(angle + 3 * da), r1 * sin(angle + 3 * da),
-		 width * 0.5);
-      glVertex3f(r1 * cos(angle + 3 * da), r1 * sin(angle + 3 * da),
-		 -width * 0.5);
-      glNormal3f(cos(angle), sin(angle), 0.0);
-   }
-
-   glVertex3f(r1 * cos(0), r1 * sin(0), width * 0.5);
-   glVertex3f(r1 * cos(0), r1 * sin(0), -width * 0.5);
-
-   glEnd();
-
-   glShadeModel(GL_SMOOTH);
-
-   /* draw inside radius cylinder */
-   glBegin(GL_QUAD_STRIP);
-   for (i = 0; i <= teeth; i++) {
-      angle = i * 2.0 * M_PI / teeth;
-      glNormal3f(-cos(angle), -sin(angle), 0.0);
-      glVertex3f(r0 * cos(angle), r0 * sin(angle), -width * 0.5);
-      glVertex3f(r0 * cos(angle), r0 * sin(angle), width * 0.5);
-   }
-   glEnd();
+const char* glErrorString(GLenum err) {
+  switch (err) {
+    case GL_NO_ERROR:
+      return "GL_NO_ERROR: No error has been recorded";
+    case GL_INVALID_ENUM:
+      return "GL_INVALID_ENUM: An unacceptable value is specified for an "
+             "enumerated argument";
+    case GL_INVALID_OPERATION:
+      return "GL_INVALID_OPERATION: The specified operation is not allowed in "
+             "the current state";
+    case GL_INVALID_FRAMEBUFFER_OPERATION:
+      return "GL_INVALID_FRAMEBUFFER_OPERATION: The command is trying to "
+             "render "
+             "to or read from the framebuffer while the currently bound "
+             "framebuffer is not framebuffer complete";
+    case GL_OUT_OF_MEMORY:
+      return "GL_OUT_OF_MEMORY: There is not enough memory left to execute the "
+             "command";
+  }
+  return "Unspecified Error";
 }
 
-
-static void
-draw(void)
-{
-   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-   glPushMatrix();
-   glRotatef(view_rotx, 1.0, 0.0, 0.0);
-   glRotatef(view_roty, 0.0, 1.0, 0.0);
-   glRotatef(view_rotz, 0.0, 0.0, 1.0);
-
-   glPushMatrix();
-   glTranslatef(-3.0, -2.0, 0.0);
-   glRotatef(angle, 0.0, 0.0, 1.0);
-   glCallList(gear1);
-   glPopMatrix();
-
-   glPushMatrix();
-   glTranslatef(3.1, -2.0, 0.0);
-   glRotatef(-2.0 * angle - 9.0, 0.0, 0.0, 1.0);
-   glCallList(gear2);
-   glPopMatrix();
-
-   glPushMatrix();
-   glTranslatef(-3.1, 4.2, 0.0);
-   glRotatef(-2.0 * angle - 25.0, 0.0, 0.0, 1.0);
-   glCallList(gear3);
-   glPopMatrix();
-
-   glPopMatrix();
+// Simple check error call
+int check_gl_error(const char* call) {
+  int err = glGetError();
+  if (err != 0) {
+    int prog;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+    printf( "%s\nGlError: '%s' CurrentProgram: %i\n\n", call,
+            glErrorString(err), prog);
+    //exit(1);
+  }
+  return err;
 }
 
+// We can wrap the check error in a define to disable the checking
+#define GL_DEBUG(m) \
+  m;                \
+  check_gl_error(#m);
 
-static void
-draw_gears(void)
-{
-   if (stereo) {
-      /* First left eye.  */
-      glDrawBuffer(GL_BACK_LEFT);
+// TODO Figure out how to get this compound statement to work so it's one r
+// value statment. Current breaks on void return values. #define GL_DEBUG(m)
+//({__auto_type ret = m; check_gl_error(#m); ret;})
 
-      glMatrixMode(GL_PROJECTION);
-      glLoadIdentity();
-      glFrustum(left, right, -asp, asp, 5.0, 60.0);
-
-      glMatrixMode(GL_MODELVIEW);
-
-      glPushMatrix();
-      glTranslated(+0.5 * eyesep, 0.0, 0.0);
-      draw();
-      glPopMatrix();
-
-      /* Then right eye.  */
-      glDrawBuffer(GL_BACK_RIGHT);
-
-      glMatrixMode(GL_PROJECTION);
-      glLoadIdentity();
-      glFrustum(-right, -left, -asp, asp, 5.0, 60.0);
-
-      glMatrixMode(GL_MODELVIEW);
-
-      glPushMatrix();
-      glTranslated(-0.5 * eyesep, 0.0, 0.0);
-      draw();
-      glPopMatrix();
-   }
-   else {
-      draw();
-   }
+// Compiles a shader
+static GLint compile_shader(GLenum shader_type, const char* shader_file) {
+  // Open our shader file
+  FILE* f;
+  f = fopen(shader_file, "r");
+  if (!f) {
+    printf( "Unable to open shader file %s. Aborting.\n", shader_file);
+    return -1;
+  }
+  // Get the shader size
+  fseek(f, 0, SEEK_END);
+  long fsize = ftell(f);
+  printf( "Compiling %s. Shader size: %li bytes\n", shader_file, fsize);
+  char shader_source[fsize + 1];
+  fseek(f, 0, SEEK_SET);
+  fread(shader_source, fsize, 1, f);
+  shader_source[fsize] = '\0';
+  fclose(f);
+  // Compile the shader
+  GLuint shader = GL_DEBUG(glCreateShader(shader_type));
+  const char* ss = shader_source;
+  glShaderSource(shader, 1, &ss, NULL);
+  glCompileShader(shader);
+  // Check status
+  GLint status;
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+  if (status == GL_FALSE) {
+    // Output error if there was a problem
+    GLint info_log_length;
+    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &info_log_length);
+    GLchar info_log[info_log_length];
+    glGetShaderInfoLog(shader, info_log_length, NULL, info_log);
+    printf( "Compile failure in shader:\n%s\n", info_log);
+    return -1;
+  }
+  return shader;
 }
+
+// Verticies for our output triangle
+//
+// We enable culling as an example below, so  the order these
+// are provided actually matter. We need, using the right hand
+// rule, for the trangle's face to be towards the screen
+//
+// Recall that screen space coordinates are laid out like the following:
+//  0.0  0.0 -> Center
+// -1.0 -1.0 -> Bottom left
+//  1.0  1.0 -> Top right
+static const GLfloat triangle[][2] = {
+    {0.0f, 1.0f},    // Top Middle
+    {-1.0f, -1.0f},  // Bottom Left
+    {1.0f, -1.0f}    // Bottom Right
+};
+
+// Color for our output triangle, corresponding to our verticies
+// In this case R, G, B, and an Alpha channel
+static const GLfloat colors[][4] = {
+    {1.0, 0.0, 0.0, 1.0},  // Red
+    {0.0, 1.0, 0.0, 1.0},  // Green
+    {0.0, 0.0, 1.0, 1.0},  // Blue
+};
+
 
 
 /** Draw single frame, do SwapBuffers, compute FPS */
 static void
 draw_frame(Display *dpy, Window win)
 {
-   static int frames = 0;
-   static double tRot0 = -1.0, tRate0 = -1.0;
-   double dt, t = current_time();
 
-   if (tRot0 < 0.0)
-      tRot0 = t;
-   dt = t - tRot0;
-   tRot0 = t;
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // Now we draw the triangles. There are 3 points to draw
+    GL_DEBUG(glDrawArrays(GL_TRIANGLES, 0, 3));
 
-   if (animate) {
-      /* advance rotation for next frame */
-      angle += 70.0 * dt;  /* 70 degrees per second */
-      if (angle > 3600.0)
-         angle -= 3600.0;
-   }
-
-   draw_gears();
    glXSwapBuffers(dpy, win);
+}
 
-   frames++;
-   
-   if (tRate0 < 0.0)
-      tRate0 = t;
-   if (t - tRate0 >= 5.0) {
-      GLfloat seconds = t - tRate0;
-      GLfloat fps = frames / seconds;
-      printf("%d frames in %3.1f seconds = %6.3f FPS\n", frames, seconds,
-             fps);
-      fflush(stdout);
-      tRate0 = t;
-      frames = 0;
-   }
+static void
+init(void)
+{
+  // enable depth testing. This doesn't matter for a single triangle but
+  // useful if you have a 3d scene or multiple triangles that overlap
+  //
+  // While you could get away with rendering triangles in the right order,
+  // this is difficult to do in complex scenes or scenes where you need
+  // per-pixel ordering.
+  GL_DEBUG(glEnable(GL_DEPTH_TEST));
+  GL_DEBUG(glDepthFunc(GL_LESS));
+  GL_DEBUG(glDepthRange(0, 1000));
+  // Enable alpha blending
+  GL_DEBUG(glEnable(GL_BLEND));
+  GL_DEBUG(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+  GL_DEBUG(glEnable(GL_MULTISAMPLE));
+  // We can cull triangles that are wound away from us. Also important for 3d
+  // scenes but not this so much. Note that since we have it enabled here
+  // the order we provide the verticies in the triangle array matters
+  //
+  // The rule that if the triangle is wound facing the viewer it will be shown
+  GL_DEBUG(glEnable(GL_CULL_FACE));
+
+  // Compile our shaders
+  GLint vertex_shader;
+  GLint fragment_shader;
+  vertex_shader = compile_shader(GL_VERTEX_SHADER, "vertex.glsl");
+  fragment_shader = compile_shader(GL_FRAGMENT_SHADER, "fragment.glsl");
+  // If we have a problem quit
+  if (vertex_shader < 0 || fragment_shader < 0)
+    exit(1);
+
+  // Link the shaders together into a single 'shader program'
+  GLuint program;
+  program = glCreateProgram();
+  glAttachShader(program, vertex_shader);
+  glAttachShader(program, fragment_shader);
+  glLinkProgram(program);
+  // error checking
+  GLint status;
+  // Get link log if there is a problem
+  glGetProgramiv(program, GL_LINK_STATUS, &status);
+  if (status == GL_FALSE) {
+    GLint info_log_length;
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &info_log_length);
+
+    GLchar info_log[info_log_length];
+    glGetProgramInfoLog(program, info_log_length, NULL, info_log);
+    printf( "Shader linker failure: %s\n", info_log);
+    exit(1);
+  }
+  // Once the shaders are linked into a program they don't need to be kept
+  // around
+  glDeleteShader(vertex_shader);
+  glDeleteShader(fragment_shader);
+  // Handles for various buffers
+  // vao is a buffer of buffers, (so will point our verticies and colors)
+  // vbo_verticies is for the triangle points and
+  // vbo_colors is for the triangle colors
+  GLuint vao, vbo_verticies, vbo_colors;
+
+  // Generate a single Vertex Array and bind it  (meaning subsequent calls to do
+  // with vertex arrays will refer to it)
+  GL_DEBUG(glGenVertexArrays(1, &vao));
+  GL_DEBUG(glBindVertexArray(vao));
+  // Generate the buffer object for the verticies
+  GL_DEBUG(glGenBuffers(1, &vbo_verticies));
+  // bind it for the next few calls
+  GL_DEBUG(glBindBuffer(GL_ARRAY_BUFFER, vbo_verticies));
+  // Upload our triangle data to the vbo
+  GL_DEBUG(glBufferData(GL_ARRAY_BUFFER, sizeof(triangle), triangle,
+                        GL_STATIC_DRAW));
+  // We get the location of the 'in_position' named in the vertex shader
+  GLint in_position_loc = GL_DEBUG(glGetAttribLocation(program, "in_position"));
+  // Set the location in the vao to this buffer and tell it how to access the
+  // data. We have 2 points per vertex hence 2, and sizeof(float) * 2 and the
+  // GL_FLOAT
+  GL_DEBUG(glVertexAttribPointer(in_position_loc, 2, GL_FLOAT, GL_FALSE,
+                                 sizeof(float) * 2, 0));
+  // Enable this buffer
+  GL_DEBUG(glEnableVertexAttribArray(in_position_loc));
+  // Now geneate the vbo for colors
+  GL_DEBUG(glGenBuffers(1, &vbo_colors));
+  // Bind it for the next few calls
+  GL_DEBUG(glBindBuffer(GL_ARRAY_BUFFER, vbo_colors));
+  // Upload the color data in the same way we did triangles
+  GL_DEBUG(
+      glBufferData(GL_ARRAY_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW));
+  // We get the location of the 'in_color' named in the vertex shader
+  GLint in_color_loc = GL_DEBUG(glGetAttribLocation(program, "in_color"));
+  // This time we have RGBA values so set up 4 floats per vertex
+  GL_DEBUG(glVertexAttribPointer(in_color_loc, 4, GL_FLOAT, GL_FALSE,
+                                 sizeof(float) * 4, 0));
+  // Enable the vbo
+  GL_DEBUG(glEnableVertexAttribArray(in_color_loc));
+  // Now we set to use the shader program we previously compiled
+  GL_DEBUG( glUseProgram(program) );
 }
 
 
@@ -363,22 +342,13 @@ reshape(int width, int height)
 {
    glViewport(0, 0, (GLint) width, (GLint) height);
 
-   if (stereo) {
-      GLfloat w;
 
-      asp = (GLfloat) height / (GLfloat) width;
-      w = fix_point * (1.0 / 5.0);
+   GLfloat h = (GLfloat) height / (GLfloat) width;
 
-      left = -5.0 * ((w - 0.5 * eyesep) / fix_point);
-      right = 5.0 * ((w + 0.5 * eyesep) / fix_point);
-   }
-   else {
-      GLfloat h = (GLfloat) height / (GLfloat) width;
+   glMatrixMode(GL_PROJECTION);
+   glLoadIdentity();
+   glFrustum(-1.0, 1.0, -h, h, 5.0, 60.0);
 
-      glMatrixMode(GL_PROJECTION);
-      glLoadIdentity();
-      glFrustum(-1.0, 1.0, -h, h, 5.0, 60.0);
-   }
    
    glMatrixMode(GL_MODELVIEW);
    glLoadIdentity();
@@ -387,87 +357,7 @@ reshape(int width, int height)
    
 
 
-static void
-init(void)
-{
-   static GLfloat pos[4] = { 5.0, 5.0, 10.0, 0.0 };
-   static GLfloat red[4] = { 0.8, 0.1, 0.0, 1.0 };
-   static GLfloat green[4] = { 0.0, 0.8, 0.2, 1.0 };
-   static GLfloat blue[4] = { 0.2, 0.2, 1.0, 1.0 };
 
-   glLightfv(GL_LIGHT0, GL_POSITION, pos);
-   glEnable(GL_CULL_FACE);
-   glEnable(GL_LIGHTING);
-   glEnable(GL_LIGHT0);
-   glEnable(GL_DEPTH_TEST);
-
-   /* make the gears */
-   gear1 = glGenLists(1);
-   glNewList(gear1, GL_COMPILE);
-   glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, red);
-   gear(1.0, 4.0, 1.0, 20, 0.7);
-   glEndList();
-
-   gear2 = glGenLists(1);
-   glNewList(gear2, GL_COMPILE);
-   glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, green);
-   gear(0.5, 2.0, 2.0, 10, 0.7);
-   glEndList();
-
-   gear3 = glGenLists(1);
-   glNewList(gear3, GL_COMPILE);
-   glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, blue);
-   gear(1.3, 2.0, 0.5, 10, 0.7);
-   glEndList();
-
-   glEnable(GL_NORMALIZE);
-}
-
-
-/**
- * Remove window border/decorations.
- */
-static void
-no_border( Display *dpy, Window w)
-{
-   static const unsigned MWM_HINTS_DECORATIONS = (1 << 1);
-   static const int PROP_MOTIF_WM_HINTS_ELEMENTS = 5;
-
-   typedef struct
-   {
-      unsigned long       flags;
-      unsigned long       functions;
-      unsigned long       decorations;
-      long                inputMode;
-      unsigned long       status;
-   } PropMotifWmHints;
-
-   PropMotifWmHints motif_hints;
-   Atom prop, proptype;
-   unsigned long flags = 0;
-
-   /* setup the property */
-   motif_hints.flags = MWM_HINTS_DECORATIONS;
-   motif_hints.decorations = flags;
-
-   /* get the atom for the property */
-   prop = XInternAtom( dpy, "_MOTIF_WM_HINTS", True );
-   if (!prop) {
-      /* something went wrong! */
-      return;
-   }
-
-   /* not sure this is correct, seems to work, XA_WM_HINTS didn't work */
-   proptype = prop;
-
-   XChangeProperty( dpy, w,                         /* display, window */
-                    prop, proptype,                 /* property, type */
-                    32,                             /* format: 32-bit datums */
-                    PropModeReplace,                /* mode */
-                    (unsigned char *) &motif_hints, /* data */
-                    PROP_MOTIF_WM_HINTS_ELEMENTS    /* nelements */
-                  );
-}
 
 
 /*
@@ -479,94 +369,69 @@ make_window( Display *dpy, const char *name,
              int x, int y, int width, int height,
              Window *winRet, GLXContext *ctxRet, VisualID *visRet)
 {
-   int attribs[64];
-   int i = 0;
+       Display* disp = 0;
+    Window win = 0;
 
-   int scrnum;
-   XSetWindowAttributes attr;
-   unsigned long mask;
-   Window root;
-   Window win;
-   GLXContext ctx;
-   XVisualInfo *visinfo;
+    /* Create_display_and_window
+       -------------------------
+       Skip if you already have a display and window */
+    win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy),
+                              10, 10,   /* x, y */
+                              800, 600, /* width, height */
+                              0, 0,     /* border_width, border */
+                              0);       /* background */
 
-   /* Singleton attributes. */
-   attribs[i++] = GLX_RGBA;
-   attribs[i++] = GLX_DOUBLEBUFFER;
-   if (stereo)
-      attribs[i++] = GLX_STEREO;
+    /* Create_the_modern_OpenGL_context
+       -------------------------------- */
+    static int visual_attribs[] = {
+        GLX_RENDER_TYPE, GLX_RGBA_BIT,
+        GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+        GLX_DOUBLEBUFFER, True,
+        GLX_RED_SIZE, 1,
+        GLX_GREEN_SIZE, 1,
+        GLX_BLUE_SIZE, 1,
+        None
+    };
 
-   /* Key/value attributes. */
-   attribs[i++] = GLX_RED_SIZE;
-   attribs[i++] = 1;
-   attribs[i++] = GLX_GREEN_SIZE;
-   attribs[i++] = 1;
-   attribs[i++] = GLX_BLUE_SIZE;
-   attribs[i++] = 1;
-   attribs[i++] = GLX_DEPTH_SIZE;
-   attribs[i++] = 1;
-   if (samples > 0) {
-      attribs[i++] = GLX_SAMPLE_BUFFERS;
-      attribs[i++] = 1;
-      attribs[i++] = GLX_SAMPLES;
-      attribs[i++] = samples;
-   }
+    int num_fbc = 0;
+    GLXFBConfig *fbc = glXChooseFBConfig(dpy,
+                                         DefaultScreen(dpy),
+                                         visual_attribs, &num_fbc);
+    if (!fbc) {
+        printf("glXChooseFBConfig() failed\n");
+        exit(1);
+    }
+       
+   glXCreateContextAttribsARBProc glXCreateContextAttribsARB = 0;
+    glXCreateContextAttribsARB =
+        (glXCreateContextAttribsARBProc)
+        glXGetProcAddress((const GLubyte*)"glXCreateContextAttribsARB");
 
-   attribs[i++] = None;
+       if (!glXCreateContextAttribsARB) {
+        printf("glXCreateContextAttribsARB() not found\n");
+        exit(1);
+    }
 
-   scrnum = DefaultScreen( dpy );
-   root = RootWindow( dpy, scrnum );
-
-   visinfo = glXChooseVisual(dpy, scrnum, attribs);
-   if (!visinfo) {
-      printf("Error: couldn't get an RGB, Double-buffered");
-      if (stereo)
-         printf(", Stereo");
-      if (samples > 0)
-         printf(", Multisample");
-      printf(" visual\n");
-      exit(1);
-   }
-
-   /* window attributes */
-   attr.background_pixel = 0;
-   attr.border_pixel = 0;
-   attr.colormap = XCreateColormap( dpy, root, visinfo->visual, AllocNone);
-   attr.event_mask = StructureNotifyMask | ExposureMask | KeyPressMask;
-   /* XXX this is a bad way to get a borderless window! */
-   mask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask;
-
-   win = XCreateWindow( dpy, root, x, y, width, height,
-		        0, visinfo->depth, InputOutput,
-		        visinfo->visual, mask, &attr );
-
-   if (fullscreen)
-      no_border(dpy, win);
-
-   /* set hints and properties */
-   {
-      XSizeHints sizehints;
-      sizehints.x = x;
-      sizehints.y = y;
-      sizehints.width  = width;
-      sizehints.height = height;
-      sizehints.flags = USSize | USPosition;
-      XSetNormalHints(dpy, win, &sizehints);
-      XSetStandardProperties(dpy, win, name, name,
-                              None, (char **)NULL, 0, &sizehints);
-   }
-
-   ctx = glXCreateContext( dpy, visinfo, NULL, True );
+   
+/* Set desired minimum OpenGL version */
+    static int context_attribs[] = {
+        GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
+        GLX_CONTEXT_MINOR_VERSION_ARB, 3,
+        None
+    };
+   GLXContext ctx = glXCreateContextAttribsARB( dpy, fbc[0], NULL, True,
+                                                context_attribs);
+                                                
    if (!ctx) {
       printf("Error: glXCreateContext failed\n");
       exit(1);
    }
 
+   
+
    *winRet = win;
    *ctxRet = ctx;
-   *visRet = visinfo->visualid;
 
-   XFree(visinfo);
 }
 
 
@@ -731,34 +596,6 @@ main(int argc, char *argv[])
    VisualID visId;
    int i;
 
-   for (i = 1; i < argc; i++) {
-      if (strcmp(argv[i], "-display") == 0) {
-         dpyName = argv[i+1];
-         i++;
-      }
-      else if (strcmp(argv[i], "-info") == 0) {
-         printInfo = GL_TRUE;
-      }
-      else if (strcmp(argv[i], "-stereo") == 0) {
-         stereo = GL_TRUE;
-      }
-      else if (i < argc-1 && strcmp(argv[i], "-samples") == 0) {
-         samples = strtod(argv[i+1], NULL );
-         ++i;
-      }
-      else if (strcmp(argv[i], "-fullscreen") == 0) {
-         fullscreen = GL_TRUE;
-      }
-      else if (i < argc-1 && strcmp(argv[i], "-geometry") == 0) {
-         XParseGeometry(argv[i+1], &x, &y, &winWidth, &winHeight);
-         i++;
-      }
-      else {
-         usage();
-         return -1;
-      }
-   }
-
    dpy = XOpenDisplay(dpyName);
    if (!dpy) {
       printf("Error: couldn't open display %s\n",
@@ -766,26 +603,14 @@ main(int argc, char *argv[])
       return -1;
    }
 
-   if (fullscreen) {
-      int scrnum = DefaultScreen(dpy);
-
-      x = 0; y = 0;
-      winWidth = DisplayWidth(dpy, scrnum);
-      winHeight = DisplayHeight(dpy, scrnum);
-   }
-
    make_window(dpy, "glxgears", x, y, winWidth, winHeight, &win, &ctx, &visId);
    XMapWindow(dpy, win);
    glXMakeCurrent(dpy, win, ctx);
    query_vsync(dpy, win);
 
-   if (printInfo) {
-      printf("GL_RENDERER   = %s\n", (char *) glGetString(GL_RENDERER));
-      printf("GL_VERSION    = %s\n", (char *) glGetString(GL_VERSION));
-      printf("GL_VENDOR     = %s\n", (char *) glGetString(GL_VENDOR));
-      printf("GL_EXTENSIONS = %s\n", (char *) glGetString(GL_EXTENSIONS));
-      printf("VisualID %d, 0x%x\n", (int) visId, (int) visId);
-   }
+   printf("GL_RENDERER   = %s\n", (char *) glGetString(GL_RENDERER));
+   printf("GL_VERSION    = %s\n", (char *) glGetString(GL_VERSION));
+   printf("GL_VENDOR     = %s\n", (char *) glGetString(GL_VENDOR));
 
    init();
 
@@ -797,9 +622,6 @@ main(int argc, char *argv[])
 
    event_loop(dpy, win);
 
-   glDeleteLists(gear1, 1);
-   glDeleteLists(gear2, 1);
-   glDeleteLists(gear3, 1);
    glXMakeCurrent(dpy, None, NULL);
    glXDestroyContext(dpy, ctx);
    XDestroyWindow(dpy, win);
