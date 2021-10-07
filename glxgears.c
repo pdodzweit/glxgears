@@ -313,10 +313,8 @@ init(void)
   // Set the location in the vao to this buffer and tell it how to access the
   // data. We have 2 points per vertex hence 2, and sizeof(float) * 2 and the
   // GL_FLOAT
-  GL_DEBUG(glVertexAttribPointer(in_position_loc, 2, GL_FLOAT, GL_FALSE,
-                                 sizeof(float) * 2, 0));
+
   // Enable this buffer
-  GL_DEBUG(glEnableVertexAttribArray(in_position_loc));
   // Now geneate the vbo for colors
   GL_DEBUG(glGenBuffers(1, &vbo_colors));
   // Bind it for the next few calls
@@ -326,11 +324,8 @@ init(void)
       glBufferData(GL_ARRAY_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW));
   // We get the location of the 'in_color' named in the vertex shader
   GLint in_color_loc = GL_DEBUG(glGetAttribLocation(program, "in_color"));
-  // This time we have RGBA values so set up 4 floats per vertex
-  GL_DEBUG(glVertexAttribPointer(in_color_loc, 4, GL_FLOAT, GL_FALSE,
-                                 sizeof(float) * 4, 0));
+
   // Enable the vbo
-  GL_DEBUG(glEnableVertexAttribArray(in_color_loc));
   // Now we set to use the shader program we previously compiled
   GL_DEBUG( glUseProgram(program) );
 }

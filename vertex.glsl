@@ -52,7 +52,6 @@ layout(std140) uniform modelBlock
 #define resource_handle (resourceChunk * DRW_RESOURCE_CHUNK_LEN + resource_id)
 
 #define NormalMatrix transpose(mat3(ModelMatrixInverse))
-#define NormalMatrixInverse transpose(mat3(ModelMatrix))
 
 #define normal_object_to_view(n) (mat3(ViewMatrix) * (NormalMatrix * n))
 
@@ -67,12 +66,7 @@ IN_OUT ShaderStageInterface
   vec3 color_interp;
   float alpha_interp;
   vec2 uv_interp;
-#ifdef TRANSPARENT_MATERIAL
-  flat float roughness;
-  flat float metallic;
-#else
   flat float packed_rough_metal;
-#endif
   flat int object_id;
 };
 
