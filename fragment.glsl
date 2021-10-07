@@ -11,10 +11,6 @@ IN_OUT ShaderStageInterface
 {
   vec3 normal_interp;
   vec3 color_interp;
-  float alpha_interp;
-  vec2 uv_interp;
-  flat float packed_rough_metal;
-  flat int object_id;
 };
 
 #  define WB_Normal vec2
@@ -38,14 +34,4 @@ uniform bool useMatcap = false;
 void main()
 {
   normalData = workbench_normal_encode(gl_FrontFacing, normal_interp);
-
-  materialData = vec4(color_interp, packed_rough_metal);
-
-  objectId = uint(object_id);
-
-  if (useMatcap) {
-    /* For matcaps, save front facing in alpha channel. */
-    materialData.a = float(gl_FrontFacing);
-  }
-
 }

@@ -64,13 +64,7 @@ IN_OUT ShaderStageInterface
 {
   vec3 normal_interp;
   vec3 color_interp;
-  float alpha_interp;
-  vec2 uv_interp;
-  flat float packed_rough_metal;
-  flat int object_id;
 };
-
-
 
 /* Encoding into the alpha of a RGBA16F texture. (10bit mantissa) */
 #define TARGET_BITCOUNT 8u
@@ -99,18 +93,6 @@ layout(std140) uniform material_block
 /* If set to -1, the resource handle is used instead. */
 uniform int materialIndex;
 
-void workbench_material_data_get(
-    int handle, out vec3 color, out float alpha, out float roughness, out float metallic)
-{
-  handle = (materialIndex != -1) ? materialIndex : handle;
-  vec4 data = mat_data[uint(handle) & 0xFFFu];
-  color = data.rgb;
-
-  uint encoded_data = floatBitsToUint(data.w);
-  alpha = float((encoded_data >> 16u) & 0xFFu) * (1.0 / 255.0);
-  roughness = float((encoded_data >> 8u) & 0xFFu) * (1.0 / 255.0);
-  metallic = float(encoded_data & 0xFFu) * (1.0 / 255.0);
-}
 
 
 in vec3 pos;
@@ -123,18 +105,7 @@ void main()
   vec3 world_pos = point_object_to_world(pos);
   gl_Position = point_world_to_ndc(world_pos);
 
-  uv_interp = au;
-
   normal_interp = normalize(normal_object_to_view(nor));
 
-  float metallic, roughness;
-  workbench_material_data_get(resource_handle, color_interp, alpha_interp, roughness, metallic);
 
-  if (materialIndex == 0) {
-    color_interp = ac.rgb;
-  }
-
-  packed_rough_metal = workbench_float_pair_encode(roughness, metallic);
-
-  object_id = int(uint(resource_handle) & 0xFFFFu) + 1;
 }
